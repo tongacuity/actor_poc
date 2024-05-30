@@ -21,7 +21,7 @@ impl Actor for SimpleActor {
     async fn run(&mut self) {
         loop {
             self.state += 1;
-            println!("{}: with state = {}", self.name, self.state);
+            println!("-----{}: with state = {}", self.name, self.state);
 
             sleep(Duration::from_secs(1)).await;
         }

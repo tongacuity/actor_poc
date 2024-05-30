@@ -1,10 +1,12 @@
 pub mod actor;
 pub mod actor_with_message;
 pub mod simple_actor;
+pub mod websocket_actor;
 
 use actor::ActorHandler;
 use actor_with_message::{ActorMessage, ActorWithMessage, ActorWithMessageHandler};
 use simple_actor::{SimpleActor, SimpleActorHandler};
+use websocket_actor::{WebSocketActor, WebSocketActorHandler};
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +22,18 @@ async fn main() {
     actor_message_handler.start(actor_message);
     start_seding_to_actor_message(&actor_message_handler);
 
-    loop {}
+    // Example 3: An actor which is also a websocket client which connects to binance and listen on BBO update channel
+    let (sender, receiver) = tokio::sync::mpsc::channel(100);
+    let websocket_client = WebSocketActor::new("WebosocetActor".to_string(), receiver);
+    let websocket_handler = WebSocketActorHandler::new(sender);
+    websocket_handler.start(websocket_client);
+    start_printing_bbo(&websocket_handler);
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    loop {        
+        println!();
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
 }
 
 fn start_seding_to_actor_message(handler: &ActorWithMessageHandler) {
@@ -32,6 +45,18 @@ fn start_seding_to_actor_message(handler: &ActorWithMessageHandler) {
                 .send_message(ActorMessage::Get { value: counter })
                 .await;
             counter += 1;
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+    });
+}
+
+fn start_printing_bbo(handler: &WebSocketActorHandler) {
+    let handler: WebSocketActorHandler = handler.clone();
+    tokio::spawn(async move {
+        loop {
+            let result = handler.get_bbo_data().await;
+
+            println!("***** BBO data = {:?}", result);
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
     });

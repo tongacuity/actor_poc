@@ -28,7 +28,7 @@ impl ActorWithMessage {
     }
 
     fn handle_message(&self, msg: ActorMessage) {
-        println!("{} received message {:?}", self.name, msg);
+        println!("+++++{} received message {:?}", self.name, msg);
     }
 }
 
