@@ -10,12 +10,12 @@ use websocket_actor::{WebSocketActor, WebSocketActorHandler};
 
 #[tokio::main]
 async fn main() {
-    // Example #1: A very simple actor with an infinite loop that increments a state variable
+    // Example #1: A very simple actor with an infinite loop that increments its state variable
     let simple_actor = SimpleActor::new("SimpleActor".to_string());
     let simple_actor_handler = SimpleActorHandler::new();
     simple_actor_handler.start(simple_actor);
 
-    // Example 2: An actor with an infinite loop that listen for messages
+    // Example 2: An actor with an infinite loop that listen for messages sent from main.rs
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
     let actor_message = ActorWithMessage::new("ActorWithMessage".to_string(), receiver);
     let actor_message_handler = ActorWithMessageHandler::new(sender);
