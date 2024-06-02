@@ -6,13 +6,16 @@ pub mod websocket_actor;
 use actor::ActorHandler;
 use actor_with_message::{ActorMessage, ActorWithMessage, ActorWithMessageHandler};
 use simple_actor::{SimpleActor, SimpleActorHandler};
+use tokio_util::sync::CancellationToken;
 use websocket_actor::{WebSocketActor, WebSocketActorHandler};
 
 #[tokio::main]
 async fn main() {
     // Example #1: A very simple actor with an infinite loop that increments its state variable
-    let simple_actor = SimpleActor::new("SimpleActor".to_string());
-    let simple_actor_handler = SimpleActorHandler::new();
+    let token = CancellationToken::new();
+    let clone_token = token.clone();
+    let simple_actor = SimpleActor::new("SimpleActor".to_string(), token);
+    let simple_actor_handler = SimpleActorHandler::new(clone_token);
     simple_actor_handler.start(simple_actor);
 
     // Example 2: An actor with an infinite loop that listen for messages sent from main.rs
@@ -29,10 +32,19 @@ async fn main() {
     websocket_handler.start(websocket_client);
     start_printing_bbo(&websocket_handler);
 
+    let mut counter = 0;
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    loop {        
+    loop {
         println!();
+        println!("Main loop iteration: {}", counter);
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        counter += 1;
+        match counter {
+            5 => simple_actor_handler.stop(),
+            10 => actor_message_handler.stop(),
+            15_ => websocket_handler.stop(),
+            _ => (),
+        }
     }
 }
 

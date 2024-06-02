@@ -37,7 +37,11 @@ pub struct ActorWithMessageHandler {
     sender: mpsc::Sender<ActorMessage>,
 }
 
-impl ActorHandler for ActorWithMessageHandler {}
+impl ActorHandler for ActorWithMessageHandler {
+    fn get_cancellation_token(&self) -> Option<tokio_util::sync::CancellationToken> {
+        None
+    }
+}
 
 impl ActorWithMessageHandler {
     pub fn new(sender: mpsc::Sender<ActorMessage>) -> Self {

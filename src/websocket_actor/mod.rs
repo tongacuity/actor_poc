@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use rust_decimal::Decimal;
 
 use crate::actor::{Actor, ActorHandler};
 
@@ -131,7 +131,11 @@ pub struct WebSocketActorHandler {
     sender: mpsc::Sender<WebSocketActorMessage>,
 }
 
-impl ActorHandler for WebSocketActorHandler {}
+impl ActorHandler for WebSocketActorHandler {
+    fn get_cancellation_token(&self) -> Option<tokio_util::sync::CancellationToken> {
+        None
+    }
+}
 
 impl WebSocketActorHandler {
     pub fn new(sender: mpsc::Sender<WebSocketActorMessage>) -> Self {
