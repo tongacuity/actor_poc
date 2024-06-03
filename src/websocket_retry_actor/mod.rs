@@ -1,9 +1,12 @@
 use async_trait::async_trait;
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
+use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio_util::sync::CancellationToken;
 
-use crate::actor::{Actor, ActorHandler};
+use crate::actor::websocket_actor::{WebSocketActor, WebsocketActorHandler};
 
 pub enum WebSocketRetryActorMessage {
     Get {
@@ -16,85 +19,113 @@ const WS_ENDPOINT: &str = "ws://127.0.0.1:8080/";
 pub struct WebSocketRetryActor {
     pub name: String,
     pub receiver: mpsc::Receiver<WebSocketRetryActorMessage>,
+    cancellation_token: CancellationToken,
 }
 
 #[async_trait]
-impl Actor for WebSocketRetryActor {
-    async fn run(&mut self) {
-        let local_bbo_data: Option<String> = Option::None;
+impl WebSocketActor for WebSocketRetryActor {
+    async fn initialize(&mut self) {
+        println!("{}: Initializing WebSocketRetryActor", self.name);
+    }
 
-        loop {
-            let (mut _write, mut read) = self.connect().await.split();
-
-            loop {
-                tokio::select! {
-                    Some(message) = read.next() => {
-                        println!("Received message: {:?}", message);
-                        match message {
-                            Ok(data) => {
-                                match  data {
-                                    Message::Close(_) => {
-                                        println!("********************************* Close. Let restart the connection");
-                                        break;
-                                    }
-                                    Message::Text(text) => {
-                                        println!(".....{} received text {}", self.name, text);
-                                    }
-                                    _ => ()
-                                }
-                            }
-                            Err(e) => {
-                                println!("********************************* Error: {:?}", e);
-                            }
-                        }
-                    },
-
-                    Some(message) = self.receiver.recv() => {
-                        match message {
-                            WebSocketRetryActorMessage::Get{response} => {
-                                _ = response.send(local_bbo_data.clone());
-                            }
-                        }
-                    },
-
-                    else => break,
-                }
-            }
+    async fn connect(
+        &mut self,
+    ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, tokio_tungstenite::tungstenite::Error>
+    {
+        let url = url::Url::parse(WS_ENDPOINT).unwrap();
+        let ws_stream = connect_async(url).await;
+        match ws_stream {
+            Ok((ws_stream, _)) => Ok(ws_stream),
+            Err(e) => Err(e),
         }
+    }
+
+    async fn handle_event(
+        &mut self,
+        ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    ) -> bool {
+        let (mut _write, mut read) = ws_stream.split();
+
+        let mut local_bbo_data: Option<String> = None;
+
+        let need_retry = loop {
+            tokio::select! {
+                Some(message) = read.next() => {
+                    match message {
+                        Ok(data) => {
+                            match  data {
+                                Message::Close(_) => {
+                                    println!("********************************* Close. Let restart the connection");
+                                    break true;
+                                }
+                                Message::Text(text) => {
+                                    println!(".....{} received text: {}", self.name, text);
+                                    local_bbo_data = Some(text.clone());
+                                }
+                                _ => ()
+                            }
+                        }
+                        Err(e) => {
+                            println!("********************************* Error: {:?}", e);
+                            break true;
+                        }
+                    }
+                },
+
+                Some(message) = self.receiver.recv() => {
+                    match message {
+                        WebSocketRetryActorMessage::Get{response} => {
+                            _ = response.send(local_bbo_data.clone());
+                        }
+                    }
+                },
+
+                _ = self.cancellation_token.cancelled() => {
+                    println!("-----{}: is cancelled", self.name);
+                    break false;
+                },
+            }
+        };
+
+        need_retry
     }
 }
 
 impl WebSocketRetryActor {
-    pub fn new(name: String, receiver: mpsc::Receiver<WebSocketRetryActorMessage>) -> Self {
-        Self { name, receiver }
-    }
-
-    pub async fn connect(&mut self) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>{
-        let url = url::Url::parse(WS_ENDPOINT).unwrap();
-        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-        println!(
-            "{}: WebSocket handshake has been successfully completed",
-            self.name
-        );
-
-        ws_stream
+    pub fn new(
+        name: String,
+        receiver: mpsc::Receiver<WebSocketRetryActorMessage>,
+        cancellation_token: CancellationToken,
+    ) -> Self {
+        Self {
+            name,
+            receiver,
+            cancellation_token,
+        }
     }
 }
 
 #[derive(Clone)]
 pub struct WebSocketRetryActorHandler {
     sender: mpsc::Sender<WebSocketRetryActorMessage>,
+    cancellation_token: CancellationToken,
 }
 
-impl ActorHandler for WebSocketRetryActorHandler {
+impl WebsocketActorHandler for WebSocketRetryActorHandler {
     fn get_cancellation_token(&self) -> Option<tokio_util::sync::CancellationToken> {
-        None
+        Some(self.cancellation_token.clone())
     }
 }
 
 impl WebSocketRetryActorHandler {
-    pub fn new(sender: mpsc::Sender<WebSocketRetryActorMessage>) -> Self {
-        Self { sender }
+    pub fn new(
+        sender: mpsc::Sender<WebSocketRetryActorMessage>,
+        cancellation_token: CancellationToken,
+    ) -> Self {
+        Self {
+            sender,
+            cancellation_token,
+        }
     }
 
     pub async fn get_data(&self) -> Option<String> {

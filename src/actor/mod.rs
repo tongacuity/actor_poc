@@ -1,3 +1,5 @@
+pub mod websocket_actor;
+
 use async_trait::async_trait;
 use std::marker::Send;
 use tokio::task;
